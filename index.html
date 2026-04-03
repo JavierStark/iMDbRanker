@@ -181,7 +181,7 @@
 
     <div class="w-full max-w-4xl flex flex-col sm:flex-row items-stretch justify-center gap-4 sm:gap-6">
       <!-- Card A -->
-      <div id="card-a" class="card-pick flex-1 bg-gray-900 border-2 border-gray-700 rounded-2xl overflow-hidden"
+      <div id="card-a" class="card-pick group flex-1 bg-gray-900 border-2 border-gray-700 rounded-2xl overflow-hidden"
            onclick="pickWinner(0)">
         <div id="poster-a-wrap">
           <div class="poster-placeholder" id="poster-a-placeholder">
@@ -212,7 +212,7 @@
       </div>
 
       <!-- Card B -->
-      <div id="card-b" class="card-pick flex-1 bg-gray-900 border-2 border-gray-700 rounded-2xl overflow-hidden"
+      <div id="card-b" class="card-pick group flex-1 bg-gray-900 border-2 border-gray-700 rounded-2xl overflow-hidden"
            onclick="pickWinner(1)">
         <div id="poster-b-wrap">
           <div class="poster-placeholder" id="poster-b-placeholder">
@@ -231,7 +231,7 @@
           <p id="dir-b"   class="text-sm text-gray-400 line-clamp-1"></p>
         </div>
         <div class="px-4 pb-4">
-          <div class="w-full text-center py-2 rounded-lg border border-imdb-yellow text-imdb-yellow text-sm font-bold" id="pick-b-label">
+          <div class="w-full text-center py-2 rounded-lg border border-imdb-yellow text-imdb-yellow text-sm font-bold opacity-0 group-hover:opacity-100 transition" id="pick-b-label">
             ★ Choose This
           </div>
         </div>
@@ -359,7 +359,7 @@ function parseCSVLine(line) {
 }
 
 function parseCSV(text) {
-  // Normalise line endings
+  // Normalize line endings
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
   if (lines.length < 2) return [];
 
@@ -564,16 +564,6 @@ function showResults(sorted) {
     list.appendChild(row);
   });
 
-  // Cache posters for results screen
-  if (apiKey) {
-    sorted.forEach(movie => {
-      const key = `${movie.title}|${movie.year}`;
-      if (posterCache[key]) {
-        const imgs = list.querySelectorAll('img');
-        // already rendered via poster property if available above
-      }
-    });
-  }
 }
 
 // ─── Export ──────────────────────────────────────────
