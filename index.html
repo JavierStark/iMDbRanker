@@ -374,9 +374,10 @@ function parseCSV(text) {
     return -1;
   };
 
-  const titleIdx = find('title', 'movietitle', 'name');
-  const yearIdx  = find('year', 'releaseyear');
-  const dirIdx   = find('directors', 'director');
+  const titleIdx  = find('title', 'movietitle', 'name');
+  const yearIdx   = find('year', 'releaseyear');
+  const dirIdx    = find('directors', 'director');
+  const imdbIdx   = find('const', 'imdbid', 'tconst');
 
   if (titleIdx === -1) { alert('Could not find a "Title" column in the CSV.'); return []; }
 
@@ -389,6 +390,7 @@ function parseCSV(text) {
       title:    f[titleIdx]              || 'Unknown Title',
       year:     yearIdx  !== -1 ? f[yearIdx]  : '',
       director: dirIdx   !== -1 ? f[dirIdx]   : '',
+      imdbId:   imdbIdx  !== -1 ? f[imdbIdx]  : '',
       poster:   null,
     });
   }
@@ -492,15 +494,20 @@ async function loadPoster(movie, side) {
 
   if (!apiKey) return;
 
-  const cacheKey = `${movie.title}|${movie.year}`;
+  const cacheKey = movie.imdbId || `${movie.title}|${movie.year}`;
   if (posterCache[cacheKey] !== undefined) {
     applyPoster(posterCache[cacheKey], img, placeholder);
     return;
   }
 
   try {
-    const params = new URLSearchParams({ t: movie.title, apikey: apiKey });
-    if (movie.year) params.set('y', movie.year);
+    let params;
+    if (movie.imdbId) {
+      params = new URLSearchParams({ i: movie.imdbId, apikey: apiKey });
+    } else {
+      params = new URLSearchParams({ t: movie.title, apikey: apiKey });
+      if (movie.year) params.set('y', movie.year);
+    }
     const res  = await fetch(`https://www.omdbapi.com/?${params}`);
     const data = await res.json();
     const url  = (data.Poster && data.Poster !== 'N/A') ? data.Poster : null;
