@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>iMDb Ranker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0a0a0f; }
+    .card-pick {
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      cursor: pointer;
+    }
+    .card-pick:hover {
+      transform: translateY(-6px) scale(1.025);
+      box-shadow: 0 24px 48px rgba(0,0,0,0.7), 0 0 0 3px #f5c518;
+      border-color: #f5c518;
+    }
+    .card-pick:active {
+      transform: translateY(-2px) scale(1.01);
+    }
+    .imdb-yellow { color: #f5c518; }
+    .bg-imdb-yellow { background-color: #f5c518; }
+    .border-imdb-yellow { border-color: #f5c518; }
+    .ring-imdb-yellow { --tw-ring-color: #f5c518; }
+    .poster-img {
+      width: 100%;
+      aspect-ratio: 2/3;
+      object-fit: cover;
+      background: #1a1a2e;
+    }
+    .poster-placeholder {
+      width: 100%;
+      aspect-ratio: 2/3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      flex-direction: column;
+    }
+    .progress-bar {
+      transition: width 0.4s ease;
+    }
+    .vs-badge {
+      background: radial-gradient(circle, #f5c518 0%, #d4a017 100%);
+      box-shadow: 0 0 30px rgba(245,197,24,0.4);
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in { animation: fadeInUp 0.35s ease both; }
+    .rank-badge {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+    .rank-1  { background: linear-gradient(135deg,#FFD700,#FFA500); color: #000; }
+    .rank-2  { background: linear-gradient(135deg,#C0C0C0,#A9A9A9); color: #000; }
+    .rank-3  { background: linear-gradient(135deg,#CD7F32,#8B4513); color: #fff; }
+    .rank-other { background: #2d2d3a; color: #aaa; }
+    .drop-zone-active { border-color: #f5c518 !important; background-color: rgba(245,197,24,0.05) !important; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #555; }
+  </style>
+</head>
+<body class="min-h-screen text-white font-sans antialiased">
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 1 — UPLOAD
+═══════════════════════════════════════════════════ -->
+<div id="screen-upload" class="min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center gap-3">
+    <div class="bg-imdb-yellow rounded px-2 py-1">
+      <span class="font-black text-black text-sm tracking-wider">IMDb</span>
+    </div>
+    <h1 class="text-xl font-bold text-white">Ranker</h1>
+  </header>
+
+  <main class="flex-1 flex items-center justify-center p-6">
+    <div class="w-full max-w-xl space-y-8 animate-in">
+      <!-- Hero -->
+      <div class="text-center space-y-3">
+        <h2 class="text-4xl font-extrabold text-white leading-tight">
+          Rank Your <span class="imdb-yellow">Watchlist</span>
+        </h2>
+        <p class="text-gray-400 text-lg">
+          Upload your IMDb export CSV and rank movies through simple head-to-head matchups.
+        </p>
+      </div>
+
+      <!-- Upload card -->
+      <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 space-y-5">
+        <!-- Drop zone -->
+        <div id="drop-zone"
+             class="border-2 border-dashed border-gray-600 rounded-xl p-10 text-center cursor-pointer transition-all hover:border-imdb-yellow hover:bg-yellow-500/5"
+             onclick="document.getElementById('csv-input').click()">
+          <input type="file" id="csv-input" accept=".csv" class="hidden" />
+          <svg class="mx-auto mb-3 text-gray-500" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+            <polyline points="16 12 12 8 8 12"/>
+            <line x1="12" y1="8" x2="12" y2="20"/>
+          </svg>
+          <p class="text-gray-300 font-medium" id="drop-label">Click or drag &amp; drop your IMDb CSV file</p>
+          <p class="text-gray-500 text-sm mt-1">Export from IMDb → Your Ratings / Watchlist → ⋮ → Export</p>
+        </div>
+
+        <!-- API Key -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-300 flex items-center gap-2">
+            OMDb API Key
+            <span class="text-gray-500 font-normal">(for movie posters)</span>
+            <a href="https://www.omdbapi.com/apikey.aspx" target="_blank"
+               class="text-xs imdb-yellow underline ml-auto">Get free key →</a>
+          </label>
+          <input id="api-key-input" type="text" placeholder="e.g. a1b2c3d4"
+                 class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-imdb-yellow focus:ring-1 ring-imdb-yellow transition" />
+          <p class="text-gray-500 text-xs">Key is saved in your browser. Leave blank to proceed without posters.</p>
+        </div>
+
+        <!-- Start button -->
+        <button id="start-btn" disabled
+                class="w-full py-3 rounded-xl font-bold text-black text-lg bg-gray-700 text-gray-500 cursor-not-allowed transition-all"
+                onclick="startRanking()">
+          Start Ranking
+        </button>
+      </div>
+
+      <!-- How it works -->
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div class="space-y-2">
+          <div class="text-3xl">📂</div>
+          <p class="text-sm text-gray-400">Upload your IMDb CSV export</p>
+        </div>
+        <div class="space-y-2">
+          <div class="text-3xl">⚔️</div>
+          <p class="text-sm text-gray-400">Pick winners in head-to-head matchups</p>
+        </div>
+        <div class="space-y-2">
+          <div class="text-3xl">🏆</div>
+          <p class="text-sm text-gray-400">See your perfect ranked list with scores</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 2 — MATCHUP
+═══════════════════════════════════════════════════ -->
+<div id="screen-matchup" class="hidden min-h-screen flex flex-col">
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="bg-imdb-yellow rounded px-2 py-1">
+        <span class="font-black text-black text-sm tracking-wider">IMDb</span>
+      </div>
+      <h1 class="text-xl font-bold">Ranker</h1>
+    </div>
+    <div class="text-right">
+      <p class="text-sm text-gray-400">Comparison</p>
+      <p class="text-lg font-bold"><span id="comp-current">0</span> <span class="text-gray-500">/ ~<span id="comp-total">0</span></span></p>
+    </div>
+  </header>
+
+  <!-- Progress bar -->
+  <div class="h-1 bg-gray-800">
+    <div id="progress-bar" class="h-1 bg-imdb-yellow progress-bar" style="width:0%"></div>
+  </div>
+
+  <main class="flex-1 flex flex-col items-center justify-center p-4 gap-6">
+    <p class="text-gray-400 text-sm font-medium uppercase tracking-widest">Which do you prefer?</p>
+
+    <div class="w-full max-w-4xl flex flex-col sm:flex-row items-stretch justify-center gap-4 sm:gap-6">
+      <!-- Card A -->
+      <div id="card-a" class="card-pick flex-1 bg-gray-900 border-2 border-gray-700 rounded-2xl overflow-hidden"
+           onclick="pickWinner(0)">
+        <div id="poster-a-wrap">
+          <div class="poster-placeholder" id="poster-a-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="1.5">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <p class="text-gray-600 text-sm mt-2">No Poster</p>
+          </div>
+          <img id="poster-a" class="poster-img hidden" alt="Movie poster" />
+        </div>
+        <div class="p-4 space-y-1">
+          <h3 id="title-a" class="text-lg font-bold text-white leading-tight line-clamp-2"></h3>
+          <p id="year-a"  class="text-sm imdb-yellow font-semibold"></p>
+          <p id="dir-a"   class="text-sm text-gray-400 line-clamp-1"></p>
+        </div>
+        <div class="px-4 pb-4">
+          <div class="w-full text-center py-2 rounded-lg border border-imdb-yellow text-imdb-yellow text-sm font-bold opacity-0 group-hover:opacity-100 transition" id="pick-a-label">
+            ★ Choose This
+          </div>
+        </div>
+      </div>
+
+      <!-- VS badge -->
+      <div class="flex items-center justify-center shrink-0">
+        <div class="vs-badge rounded-full w-14 h-14 flex items-center justify-center text-black font-black text-lg z-10">VS</div>
+      </div>
+
+      <!-- Card B -->
+      <div id="card-b" class="card-pick flex-1 bg-gray-900 border-2 border-gray-700 rounded-2xl overflow-hidden"
+           onclick="pickWinner(1)">
+        <div id="poster-b-wrap">
+          <div class="poster-placeholder" id="poster-b-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="1.5">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <p class="text-gray-600 text-sm mt-2">No Poster</p>
+          </div>
+          <img id="poster-b" class="poster-img hidden" alt="Movie poster" />
+        </div>
+        <div class="p-4 space-y-1">
+          <h3 id="title-b" class="text-lg font-bold text-white leading-tight line-clamp-2"></h3>
+          <p id="year-b"  class="text-sm imdb-yellow font-semibold"></p>
+          <p id="dir-b"   class="text-sm text-gray-400 line-clamp-1"></p>
+        </div>
+        <div class="px-4 pb-4">
+          <div class="w-full text-center py-2 rounded-lg border border-imdb-yellow text-imdb-yellow text-sm font-bold" id="pick-b-label">
+            ★ Choose This
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skip / tie -->
+    <button onclick="pickWinner('tie')" class="text-gray-500 text-sm underline hover:text-gray-300 transition">
+      It's a tie / Skip
+    </button>
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 3 — RESULTS
+═══════════════════════════════════════════════════ -->
+<div id="screen-results" class="hidden min-h-screen flex flex-col">
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="bg-imdb-yellow rounded px-2 py-1">
+        <span class="font-black text-black text-sm tracking-wider">IMDb</span>
+      </div>
+      <h1 class="text-xl font-bold">Ranker</h1>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="exportCSV()"
+              class="px-4 py-2 rounded-lg border border-gray-600 text-gray-300 text-sm font-medium hover:border-imdb-yellow hover:text-imdb-yellow transition">
+        ⬇ Export CSV
+      </button>
+      <button onclick="resetApp()"
+              class="px-4 py-2 rounded-lg bg-imdb-yellow text-black text-sm font-bold hover:brightness-110 transition">
+        Start Over
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 p-6 max-w-3xl mx-auto w-full">
+    <div class="text-center mb-8 animate-in">
+      <h2 class="text-3xl font-extrabold text-white">Your Final Rankings 🏆</h2>
+      <p class="text-gray-400 mt-2" id="results-subtitle"></p>
+    </div>
+
+    <div id="results-list" class="space-y-3 animate-in"></div>
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════════════ -->
+<script>
+// ─── State ───────────────────────────────────────────
+let movies = [];
+let apiKey  = '';
+let comparisonCount   = 0;
+let estimatedTotal    = 0;
+let resolveComparison = null;   // Promise resolver for current matchup
+let posterCache       = {};     // title+year → poster URL
+
+// ─── Init ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Restore API key
+  const saved = localStorage.getItem('omdb_api_key');
+  if (saved) document.getElementById('api-key-input').value = saved;
+
+  // File input
+  document.getElementById('csv-input').addEventListener('change', e => {
+    handleFile(e.target.files[0]);
+  });
+
+  // Drag & drop
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drop-zone-active'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drop-zone-active'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('drop-zone-active');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+});
+
+// ─── File Handling ────────────────────────────────────
+function handleFile(file) {
+  if (!file || !file.name.endsWith('.csv')) {
+    alert('Please upload a .csv file.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    movies = parseCSV(e.target.result);
+    if (movies.length < 2) {
+      alert('Need at least 2 movies. Please check your CSV file.');
+      return;
+    }
+    document.getElementById('drop-label').textContent =
+      `✓  ${file.name}  (${movies.length} movies)`;
+    document.getElementById('drop-label').classList.add('imdb-yellow');
+
+    const btn = document.getElementById('start-btn');
+    btn.disabled = false;
+    btn.className = 'w-full py-3 rounded-xl font-bold text-black text-lg bg-imdb-yellow hover:brightness-110 cursor-pointer transition-all';
+  };
+  reader.readAsText(file);
+}
+
+// ─── CSV Parser ───────────────────────────────────────
+function parseCSVLine(line) {
+  const fields = [];
+  let cur = '';
+  let inQ  = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      fields.push(cur.trim());
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  fields.push(cur.trim());
+  return fields;
+}
+
+function parseCSV(text) {
+  // Normalise line endings
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z]/g, ''));
+
+  // IMDb column names vary slightly — be flexible
+  const find = (...candidates) => {
+    for (const c of candidates) {
+      const idx = headers.indexOf(c);
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+
+  const titleIdx = find('title', 'movietitle', 'name');
+  const yearIdx  = find('year', 'releaseyear');
+  const dirIdx   = find('directors', 'director');
+
+  if (titleIdx === -1) { alert('Could not find a "Title" column in the CSV.'); return []; }
+
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const f = parseCSVLine(lines[i]);
+    results.push({
+      id:       i,
+      title:    f[titleIdx]              || 'Unknown Title',
+      year:     yearIdx  !== -1 ? f[yearIdx]  : '',
+      director: dirIdx   !== -1 ? f[dirIdx]   : '',
+      poster:   null,
+    });
+  }
+  return results;
+}
+
+// ─── Start ────────────────────────────────────────────
+async function startRanking() {
+  apiKey = document.getElementById('api-key-input').value.trim();
+  if (apiKey) localStorage.setItem('omdb_api_key', apiKey);
+
+  // estimate comparisons: N * log2(N)
+  estimatedTotal = Math.round(movies.length * Math.log2(movies.length));
+  comparisonCount = 0;
+
+  showScreen('matchup');
+  updateProgress();
+
+  // Run merge sort (async, user-driven)
+  const sorted = await mergeSort([...movies]);
+
+  // Show results
+  showResults(sorted);
+}
+
+// ─── Async Merge Sort ─────────────────────────────────
+async function mergeSort(arr) {
+  if (arr.length <= 1) return arr;
+  const mid   = Math.floor(arr.length / 2);
+  const left  = await mergeSort(arr.slice(0, mid));
+  const right = await mergeSort(arr.slice(mid));
+  return merge(left, right);
+}
+
+async function merge(left, right) {
+  const result = [];
+  let i = 0, j = 0;
+  while (i < left.length && j < right.length) {
+    const winner = await askUser(left[i], right[j]);
+    if (winner === 0) {       // left won (preferred)
+      result.push(left[i++]);
+    } else if (winner === 1) { // right won
+      result.push(right[j++]);
+    } else {                   // tie — keep left first arbitrarily
+      result.push(left[i++]);
+    }
+  }
+  while (i < left.length)  result.push(left[i++]);
+  while (j < right.length) result.push(right[j++]);
+  return result;
+}
+
+// ─── User Comparison ──────────────────────────────────
+function askUser(movieA, movieB) {
+  return new Promise(resolve => {
+    resolveComparison = resolve;
+    comparisonCount++;
+    updateProgress();
+    renderMatchup(movieA, movieB);
+  });
+}
+
+function pickWinner(side) {
+  if (resolveComparison) {
+    const fn = resolveComparison;
+    resolveComparison = null;
+    fn(side); // 0, 1, or 'tie'
+  }
+}
+
+// ─── Matchup UI ───────────────────────────────────────
+function renderMatchup(a, b) {
+  // Text info
+  document.getElementById('title-a').textContent = a.title;
+  document.getElementById('year-a').textContent  = a.year;
+  document.getElementById('dir-a').textContent   = a.director ? `Dir. ${a.director}` : '';
+
+  document.getElementById('title-b').textContent = b.title;
+  document.getElementById('year-b').textContent  = b.year;
+  document.getElementById('dir-b').textContent   = b.director ? `Dir. ${b.director}` : '';
+
+  // Animate cards
+  ['card-a','card-b'].forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('animate-in');
+    void el.offsetWidth; // reflow
+    el.classList.add('animate-in');
+  });
+
+  // Posters
+  loadPoster(a, 'a');
+  loadPoster(b, 'b');
+}
+
+async function loadPoster(movie, side) {
+  const img         = document.getElementById(`poster-${side}`);
+  const placeholder = document.getElementById(`poster-${side}-placeholder`);
+
+  img.classList.add('hidden');
+  placeholder.classList.remove('hidden');
+
+  if (!apiKey) return;
+
+  const cacheKey = `${movie.title}|${movie.year}`;
+  if (posterCache[cacheKey] !== undefined) {
+    applyPoster(posterCache[cacheKey], img, placeholder);
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({ t: movie.title, apikey: apiKey });
+    if (movie.year) params.set('y', movie.year);
+    const res  = await fetch(`https://www.omdbapi.com/?${params}`);
+    const data = await res.json();
+    const url  = (data.Poster && data.Poster !== 'N/A') ? data.Poster : null;
+    posterCache[cacheKey] = url;
+    applyPoster(url, img, placeholder);
+  } catch {
+    posterCache[cacheKey] = null;
+  }
+}
+
+function applyPoster(url, img, placeholder) {
+  if (url) {
+    img.src = url;
+    img.onload  = () => { img.classList.remove('hidden'); placeholder.classList.add('hidden'); };
+    img.onerror = () => { img.classList.add('hidden');    placeholder.classList.remove('hidden'); };
+  }
+}
+
+// ─── Progress ────────────────────────────────────────
+function updateProgress() {
+  document.getElementById('comp-current').textContent = comparisonCount;
+  document.getElementById('comp-total').textContent   = estimatedTotal;
+  const pct = estimatedTotal > 0
+    ? Math.min(100, Math.round((comparisonCount / estimatedTotal) * 100))
+    : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+// ─── Results ─────────────────────────────────────────
+function showResults(sorted) {
+  showScreen('results');
+
+  const n = sorted.length;
+  document.getElementById('results-subtitle').textContent =
+    `${n} movies ranked after ${comparisonCount} comparisons`;
+
+  const list = document.getElementById('results-list');
+  list.innerHTML = '';
+
+  sorted.forEach((movie, idx) => {
+    const rank  = idx + 1;
+    const score = n === 1 ? 10.0 : +(10.0 - (idx / (n - 1)) * 9.0).toFixed(1);
+
+    let badgeClass = idx < 3 ? `rank-${rank}` : 'rank-other';
+    let badgeText  = rank <= 3 ? ['🥇','🥈','🥉'][idx] : rank;
+
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-4 bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition';
+    row.innerHTML = `
+      <div class="rank-badge ${badgeClass}">${badgeText}</div>
+      ${movie.poster ? `<img src="${movie.poster}" class="w-10 h-14 object-cover rounded flex-shrink-0" />` : ''}
+      <div class="flex-1 min-w-0">
+        <p class="font-bold text-white truncate">${escapeHtml(movie.title)}</p>
+        <p class="text-sm text-gray-400">${escapeHtml(movie.year)}${movie.director ? ' · ' + escapeHtml(movie.director) : ''}</p>
+      </div>
+      <div class="text-right flex-shrink-0">
+        <span class="text-xl font-black imdb-yellow">${score.toFixed(1)}</span>
+        <span class="text-gray-500 text-xs block">/ 10</span>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+
+  // Cache posters for results screen
+  if (apiKey) {
+    sorted.forEach(movie => {
+      const key = `${movie.title}|${movie.year}`;
+      if (posterCache[key]) {
+        const imgs = list.querySelectorAll('img');
+        // already rendered via poster property if available above
+      }
+    });
+  }
+}
+
+// ─── Export ──────────────────────────────────────────
+function exportCSV() {
+  const rows = [['Rank','Score','Title','Year','Directors']];
+  const items = document.querySelectorAll('#results-list > div');
+  items.forEach((row, idx) => {
+    const cells = row.querySelectorAll('p');
+    const title = cells[0]?.textContent || '';
+    const meta  = cells[1]?.textContent || '';
+    const [year, ...dirParts] = meta.split(' · ');
+    const n = items.length;
+    const score = n === 1 ? 10.0 : +(10.0 - (idx / (n - 1)) * 9.0).toFixed(1);
+    rows.push([idx+1, score.toFixed(1), title, year.trim(), dirParts.join(' · ')]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'imdb_rankings.csv';
+  a.click();
+}
+
+// ─── Helpers ─────────────────────────────────────────
+function showScreen(name) {
+  ['upload','matchup','results'].forEach(s => {
+    document.getElementById(`screen-${s}`).classList.toggle('hidden', s !== name);
+  });
+}
+
+function resetApp() {
+  movies = [];
+  comparisonCount = 0;
+  posterCache = {};
+  resolveComparison = null;
+  document.getElementById('csv-input').value = '';
+  document.getElementById('drop-label').textContent = 'Click or drag & drop your IMDb CSV file';
+  document.getElementById('drop-label').classList.remove('imdb-yellow');
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  btn.className = 'w-full py-3 rounded-xl font-bold text-black text-lg bg-gray-700 text-gray-500 cursor-not-allowed transition-all';
+  showScreen('upload');
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
