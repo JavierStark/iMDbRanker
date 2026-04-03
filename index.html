@@ -520,9 +520,9 @@ async function loadPoster(movie, side) {
 
 function applyPoster(url, img, placeholder) {
   if (url) {
-    img.src = url;
     img.onload  = () => { img.classList.remove('hidden'); placeholder.classList.add('hidden'); };
     img.onerror = () => { img.classList.add('hidden');    placeholder.classList.remove('hidden'); };
+    img.src = url;
   }
 }
 
