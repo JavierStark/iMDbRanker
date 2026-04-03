@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>iMDb Ranker</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+          integrity="sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb"
+          crossorigin="anonymous"></script>
   <style>
     body { background-color: #0a0a0f; }
     .card-pick {
@@ -94,7 +97,7 @@
           Rank Your <span class="imdb-yellow">Watchlist</span>
         </h2>
         <p class="text-gray-400 text-lg">
-          Upload your IMDb export CSV and rank movies through simple head-to-head matchups.
+          Upload your IMDb CSV or Letterboxd ZIP export and rank movies through simple head-to-head matchups.
         </p>
       </div>
 
@@ -104,14 +107,14 @@
         <div id="drop-zone"
              class="border-2 border-dashed border-gray-600 rounded-xl p-10 text-center cursor-pointer transition-all hover:border-imdb-yellow hover:bg-yellow-500/5"
              onclick="document.getElementById('csv-input').click()">
-          <input type="file" id="csv-input" accept=".csv" class="hidden" />
+          <input type="file" id="csv-input" accept=".csv,.zip" class="hidden" />
           <svg class="mx-auto mb-3 text-gray-500" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
             <polyline points="16 12 12 8 8 12"/>
             <line x1="12" y1="8" x2="12" y2="20"/>
           </svg>
-          <p class="text-gray-300 font-medium" id="drop-label">Click or drag &amp; drop your IMDb CSV file</p>
-          <p class="text-gray-500 text-sm mt-1">Export from IMDb → Your Ratings / Watchlist → ⋮ → Export</p>
+          <p class="text-gray-300 font-medium" id="drop-label">Click or drag &amp; drop your IMDb CSV or Letterboxd ZIP</p>
+          <p class="text-gray-500 text-sm mt-1">IMDb: Your Ratings / Watchlist → ⋮ → Export &nbsp;|&nbsp; Letterboxd: Settings → Import &amp; Export → Export Your Data</p>
         </div>
 
         <!-- API Key -->
@@ -139,7 +142,7 @@
       <div class="grid grid-cols-3 gap-4 text-center">
         <div class="space-y-2">
           <div class="text-3xl">📂</div>
-          <p class="text-sm text-gray-400">Upload your IMDb CSV export</p>
+          <p class="text-sm text-gray-400">Upload your IMDb CSV or Letterboxd ZIP export</p>
         </div>
         <div class="space-y-2">
           <div class="text-3xl">⚔️</div>
@@ -152,6 +155,29 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     LETTERBOXD LIST PICKER MODAL
+═══════════════════════════════════════════════════ -->
+<div id="lb-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.75)">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-5 animate-in">
+    <div>
+      <h3 class="text-xl font-bold text-white">Select a Letterboxd List</h3>
+      <p class="text-gray-400 text-sm mt-1">Choose which list from your export you want to rank.</p>
+    </div>
+    <div id="lb-list-options" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
+    <div class="flex gap-3 pt-1">
+      <button onclick="cancelLetterboxdModal()"
+              class="flex-1 py-2.5 rounded-xl border border-gray-600 text-gray-300 font-medium hover:border-gray-400 transition">
+        Cancel
+      </button>
+      <button id="lb-import-btn" disabled onclick="confirmLetterboxdList()"
+              class="flex-1 py-2.5 rounded-xl font-bold text-black bg-gray-700 text-gray-500 cursor-not-allowed transition-all">
+        Import
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════
@@ -315,26 +341,146 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ─── File Handling ────────────────────────────────────
 function handleFile(file) {
-  if (!file || !file.name.endsWith('.csv')) {
-    alert('Please upload a .csv file.');
+  if (!file) return;
+  if (file.name.endsWith('.zip')) {
+    handleLetterboxdZip(file);
+  } else if (file.name.endsWith('.csv')) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      movies = parseCSV(e.target.result);
+      if (movies.length < 2) {
+        alert('Need at least 2 movies. Please check your CSV file.');
+        return;
+      }
+      document.getElementById('drop-label').textContent =
+        `✓  ${file.name}  (${movies.length} movies)`;
+      document.getElementById('drop-label').classList.add('imdb-yellow');
+
+      const btn = document.getElementById('start-btn');
+      btn.disabled = false;
+      btn.className = 'w-full py-3 rounded-xl font-bold text-black text-lg bg-imdb-yellow hover:brightness-110 cursor-pointer transition-all';
+    };
+    reader.readAsText(file);
+  } else {
+    alert('Please upload a .csv file or a Letterboxd .zip export.');
+  }
+}
+
+// ─── Letterboxd ZIP Handler ───────────────────────────
+let lbZipEntries = {};   // filename → JSZip file object
+let lbSelectedKey = '';  // currently selected list key in modal
+
+// Known top-level CSV filenames present in a standard Letterboxd export
+const LB_KNOWN = {
+  'watchlist.csv': 'Watchlist',
+  'ratings.csv':   'Ratings',
+  'watched.csv':   'Watched',
+  'diary.csv':     'Diary',
+};
+
+function formatListName(filename) {
+  return filename.replace(/\.csv$/i, '').replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+async function handleLetterboxdZip(file) {
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(file);
+  } catch {
+    alert('Could not read the ZIP file. Please make sure it is a valid Letterboxd export.');
     return;
   }
-  const reader = new FileReader();
-  reader.onload = e => {
-    movies = parseCSV(e.target.result);
-    if (movies.length < 2) {
-      alert('Need at least 2 movies. Please check your CSV file.');
-      return;
-    }
-    document.getElementById('drop-label').textContent =
-      `✓  ${file.name}  (${movies.length} movies)`;
-    document.getElementById('drop-label').classList.add('imdb-yellow');
 
-    const btn = document.getElementById('start-btn');
-    btn.disabled = false;
-    btn.className = 'w-full py-3 rounded-xl font-bold text-black text-lg bg-imdb-yellow hover:brightness-110 cursor-pointer transition-all';
-  };
-  reader.readAsText(file);
+  lbZipEntries = {};
+  const options = [];
+
+  zip.forEach((relativePath, entry) => {
+    if (entry.dir) return;
+    const name = relativePath.replace(/\\/g, '/');
+    const base = name.split('/').pop().toLowerCase();
+
+    if (LB_KNOWN[base]) {
+      lbZipEntries[name] = entry;
+      options.push({ key: name, label: LB_KNOWN[base] });
+    } else if (name.toLowerCase().startsWith('lists/') && base.endsWith('.csv')) {
+      lbZipEntries[name] = entry;
+      options.push({ key: name, label: `List: ${formatListName(base)}` });
+    }
+  });
+
+  if (options.length === 0) {
+    alert('No recognizable Letterboxd lists found in this ZIP.\nExpected files like watchlist.csv, ratings.csv, or lists/*.csv');
+    return;
+  }
+
+  // Populate modal options
+  lbSelectedKey = '';
+  const container = document.getElementById('lb-list-options');
+  container.innerHTML = '';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.key = opt.key;
+    btn.className = 'lb-option w-full text-left px-4 py-3 rounded-xl border-2 border-gray-700 bg-gray-800 text-white font-medium hover:border-imdb-yellow transition-all';
+    btn.textContent = opt.label;
+    btn.addEventListener('click', () => selectLbOption(opt.key));
+    container.appendChild(btn);
+  });
+
+  // Auto-select if only one option
+  if (options.length === 1) selectLbOption(options[0].key);
+
+  document.getElementById('lb-modal').classList.remove('hidden');
+}
+
+function selectLbOption(key) {
+  lbSelectedKey = key;
+  document.querySelectorAll('.lb-option').forEach(el => {
+    const active = el.dataset.key === key;
+    el.classList.toggle('border-imdb-yellow', active);
+    el.classList.toggle('border-gray-700', !active);
+    el.classList.toggle('bg-yellow-500/10', active);
+  });
+  const btn = document.getElementById('lb-import-btn');
+  btn.disabled = false;
+  btn.className = 'flex-1 py-2.5 rounded-xl font-bold text-black bg-imdb-yellow hover:brightness-110 cursor-pointer transition-all';
+}
+
+function cancelLetterboxdModal() {
+  document.getElementById('lb-modal').classList.add('hidden');
+  lbSelectedKey = '';
+}
+
+async function confirmLetterboxdList() {
+  if (!lbSelectedKey || !lbZipEntries[lbSelectedKey]) return;
+  const entry = lbZipEntries[lbSelectedKey];
+  let csvText;
+  try {
+    csvText = await entry.async('string');
+  } catch {
+    alert('Could not read the selected list from the ZIP.');
+    return;
+  }
+  document.getElementById('lb-modal').classList.add('hidden');
+  importLetterboxdList(csvText, lbSelectedKey);
+}
+
+function importLetterboxdList(csvText, listPath) {
+  movies = parseCSV(csvText);
+  if (movies.length < 2) {
+    alert('Need at least 2 movies in the selected list.');
+    return;
+  }
+  const base = listPath.split('/').pop().toLowerCase();
+  const label = LB_KNOWN[base] || formatListName(base);
+  document.getElementById('drop-label').textContent =
+    `✓  Letterboxd – ${label}  (${movies.length} movies)`;
+  document.getElementById('drop-label').classList.add('imdb-yellow');
+
+  const btn = document.getElementById('start-btn');
+  btn.disabled = false;
+  btn.className = 'w-full py-3 rounded-xl font-bold text-black text-lg bg-imdb-yellow hover:brightness-110 cursor-pointer transition-all';
 }
 
 // ─── CSV Parser ───────────────────────────────────────
